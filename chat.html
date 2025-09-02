@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Anxiety Remedy Hub | Virtual Assistant</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      .chat-container { max-width: 920px; margin: 0 auto; padding: 40px; }
+      .chat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+      .chat-log { border: 1px solid #e6edf5; border-radius: 16px; background: #fff; padding: 16px; height: 60vh; overflow-y: auto; box-shadow: var(--shadow-sm); }
+      .msg { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: start; margin-bottom: 14px; }
+      .msg .avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #fff; }
+      .msg.user .avatar { background: var(--color-accent); }
+      .msg.assistant .avatar { background: var(--color-primary); }
+      .bubble { background: #f7fafc; border: 1px solid #e6edf5; border-radius: 12px; padding: 12px 14px; }
+      .composer { display: grid; grid-template-columns: 1fr auto; gap: 12px; margin-top: 16px; }
+      .composer textarea { border: 1px solid #d8e3f0; border-radius: 10px; padding: 12px; font-size: 16px; min-height: 80px; }
+      .subtitle { color: var(--color-text-soft); }
+      .disclaimer { font-size: 14px; color: var(--color-text-soft); margin-top: 12px; }
+      .link-home { text-decoration: none; color: var(--color-primary); font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <header class="site-header" role="banner">
+      <div class="container">
+        <a class="brand" href="/" aria-label="Anxiety Remedy Hub home">
+          <span class="brand-mark" aria-hidden="true">AR</span>
+          <span class="brand-name">Anxiety Remedy Hub</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li><a href="/index.html#approach">Approach</a></li>
+            <li><a href="/index.html#services">Services</a></li>
+            <li><a href="/index.html#mindfulness">Mindfulness</a></li>
+            <li><a class="cta" href="/index.html#contact">Contact</a></li>
+            <li><span id="visit-counter" aria-live="polite">Visitors: —</span></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main class="chat-container">
+      <div class="chat-header">
+        <div>
+          <h1>Virtual Assistant</h1>
+          <p class="subtitle">Friendly guidance from our anxiety relief expert, powered by AI.</p>
+        </div>
+        <a class="link-home" href="/">← Back to site</a>
+      </div>
+
+      <div id="chat-log" class="chat-log" aria-live="polite" aria-label="Chat log"></div>
+
+      <div class="composer">
+        <textarea id="composer" placeholder="Ask about techniques, routines, or how to handle specific situations…"></textarea>
+        <button id="send" class="button primary">Send</button>
+      </div>
+      <p class="disclaimer">This assistant provides educational suggestions, not medical advice. If you are in crisis, contact local emergency services or a crisis hotline.</p>
+    </main>
+
+    <script>
+      (function(){
+        var log = document.getElementById('chat-log');
+        var composer = document.getElementById('composer');
+        var sendBtn = document.getElementById('send');
+        var messages = [];
+
+        function append(role, text) {
+          var item = document.createElement('div');
+          item.className = 'msg ' + role;
+          var avatar = document.createElement('div');
+          avatar.className = 'avatar';
+          avatar.textContent = role === 'user' ? 'You' : 'AR';
+          var bubble = document.createElement('div');
+          bubble.className = 'bubble';
+          bubble.textContent = text;
+          item.appendChild(avatar);
+          item.appendChild(bubble);
+          log.appendChild(item);
+          log.scrollTop = log.scrollHeight;
+        }
+
+        function send() {
+          var text = (composer.value || '').trim();
+          if (!text) return;
+          append('user', text);
+          messages.push({ role: 'user', content: text });
+          composer.value = '';
+          sendBtn.disabled = true;
+          fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: messages })
+          }).then(function(r){
+              return r.json().then(function(d){ return { ok: r.ok, status: r.status, data: d }; });
+            })
+            .then(function(payload){
+              if (!payload.ok) {
+                var msg = (payload.data && payload.data.error) ? payload.data.error : 'Request failed';
+                if (payload.status === 500 && /Missing OPENROUTER_API_KEY/i.test(msg)) {
+                  append('assistant', 'Server is missing its API key. Please set OPENROUTER_API_KEY in .env and restart.');
+                  return;
+                }
+                if (payload.status === 401) {
+                  append('assistant', 'Auth failed with the model provider. Please check the server API key.');
+                  return;
+                }
+                append('assistant', 'Something went wrong. Please try again.');
+                return;
+              }
+              var data = payload.data || {};
+              var reply = data.content || 'Sorry, something went wrong.';
+              append('assistant', reply);
+              messages.push({ role: 'assistant', content: reply });
+            })
+            .catch(function(){ append('assistant', 'Network error. Please try again.'); })
+            .finally(function(){ sendBtn.disabled = false; });
+        }
+
+        sendBtn.addEventListener('click', send);
+        composer.addEventListener('keydown', function(e){
+          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'enter') {
+            e.preventDefault();
+            send();
+          }
+        });
+
+        // Warm greeting
+        append('assistant', 'Hi, I’m your Anxiety Remedy Hub assistant. How can I help today? I can suggest evidence-based techniques and simple routines. For personalized guidance, feel free to get in touch with our experts at Anxiety Remedy Hub via the Contact section or email sagarwalfms@gmail.com.');
+
+        // Visits: increment once per day per device
+        (function visitCounter(){
+          var KEY = 'arh-visit-date';
+          var today = new Date().toISOString().slice(0,10);
+          var last = localStorage.getItem(KEY);
+          function setCount(n){ var el = document.getElementById('visit-counter'); if (el) el.textContent = 'Visitors: ' + n; }
+          fetch('/api/visits').then(function(r){ return r.json(); }).then(function(d){ setCount(d && d.count || 0); }).catch(function(){});
+          if (last !== today) {
+            fetch('/api/visits', { method: 'POST' }).then(function(r){ return r.json(); }).then(function(d){ setCount(d && d.count || 0); localStorage.setItem(KEY, today); }).catch(function(){});
+          }
+        })();
+      })();
+    </script>
+  </body>
+  </html>
+
+
