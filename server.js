@@ -40,12 +40,12 @@ let visits = readVisits();
 
 app.use(express.json({ limit: '1mb' }));
 
-// Serve static site (index.html, chat.html, assets, etc.)
-app.use(express.static(path.join(__dirname)));
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Explicit route for root path
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Health check
@@ -119,7 +119,12 @@ app.post('/api/chat', async (req, res) => {
 
 // Explicit route for chat page for direct navigation
 app.get('/chat', (req, res) => {
-  res.sendFile(path.join(__dirname, 'chat.html'));
+  res.sendFile(path.join(__dirname, 'public', 'chat.html'));
+});
+
+// Also serve chat.html directly if requested
+app.get('/chat.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'chat.html'));
 });
 
 app.get('/api/visits', (req, res) => {

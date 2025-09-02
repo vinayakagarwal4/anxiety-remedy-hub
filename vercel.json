@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "public": "public",
   "builds": [
     {
       "src": "server.js",
@@ -21,10 +22,6 @@
     },
     {
       "src": "/",
-      "dest": "/server.js"
-    },
-    {
-      "src": "/(.*)",
       "dest": "/server.js"
     }
   ],
