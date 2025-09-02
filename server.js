@@ -43,6 +43,11 @@ app.use(express.json({ limit: '1mb' }));
 // Serve static site (index.html, chat.html, assets, etc.)
 app.use(express.static(path.join(__dirname)));
 
+// Explicit route for root path
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ ok: true });
