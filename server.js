@@ -132,8 +132,14 @@ app.post('/api/visits', (req, res) => {
   res.json({ count: visits });
 });
 
-app.listen(PORT, () => {
-  console.log(`Anxiety Remedy Hub server running at ${SITE_URL}`);
-});
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`Anxiety Remedy Hub server running at ${SITE_URL}`);
+  });
+}
+
+// Export for Vercel
+module.exports = app;
 
 
