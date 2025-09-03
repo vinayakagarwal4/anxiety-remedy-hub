@@ -80,7 +80,8 @@ app.post('/api/chat', async (req, res) => {
         '- Offer holistic suggestions where appropriate (sleep hygiene, movement, nutrition), and a responsible perspective on spirituality as a complementary tool.',
         '- Keep a calm, encouraging tone. Give concise, stepwise suggestions users can try now.',
         '- Do not diagnose or provide medical advice. Include a gentle disclaimer if needed.',
-        '- IMPORTANT: End every answer with a friendly invitation to get in touch with the experts at Anxiety Remedy Hub for more guidance and solutions (refer them to the Contact section or email sagarwalfms@gmail.com).'
+        '- The website has an interactive mindfulness breathing widget that users can access to practice guided breathing exercises. It features box breathing and 4-7-8 breathing techniques with visual animations, audio cues, and customizable session duration. When users are feeling anxious or overwhelmed, recommend they try this breathing tool to help calm down immediately.',
+        '- IMPORTANT: End every answer with a friendly invitation to get in touch with the experts at Anxiety Remedy Hub for more guidance and solutions (refer them to the Contact section or email sagarwalajmer@gmail.com).'
       ].join('\n')
     };
 
