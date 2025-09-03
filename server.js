@@ -85,7 +85,7 @@ app.post('/api/chat', async (req, res) => {
     };
 
     const body = {
-      model: 'google/gemini-2.5-flash',
+      model: 'deepseek/deepseek-chat-v3.1:free',
       messages: [systemMessage, ...userMessages],
       temperature: 0.6,
       top_p: 0.9
