@@ -63,7 +63,7 @@ function handleContactForm() {
     }
 
     // Construct a mailto link
-    var to = 'sagarwalfms@gmail.com';
+    var to = 'sagarwalajmer@gmail.com';
     var subject = 'New Inquiry from ' + name.value.trim();
     var bodyLines = [
       'Name: ' + name.value.trim(),

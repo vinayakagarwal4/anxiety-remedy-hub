@@ -61,9 +61,13 @@ app.get('/api/debug/env', (req, res) => {
   });
 });
 
-// Chat proxy to OpenRouter
+// Chat proxy to OpenRouter (streaming)
 app.post('/api/chat', async (req, res) => {
   res.set('Cache-Control', 'no-store');
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
   try {
     if (!OPENROUTER_API_KEY) {
       return res.status(500).json({ error: 'Missing OPENROUTER_API_KEY in .env' });
@@ -85,11 +89,15 @@ app.post('/api/chat', async (req, res) => {
       ].join('\n')
     };
 
+    // Check if client wants streaming
+    const wantsStream = req.headers['accept'] === 'text/event-stream' || req.body.stream === true;
+    
     const body = {
       model: 'deepseek/deepseek-chat-v3.1:free',
       messages: [systemMessage, ...userMessages],
       temperature: 0.6,
-      top_p: 0.9
+      top_p: 0.9,
+      stream: wantsStream
     };
 
     const doFetch = (typeof fetch !== 'undefined') ? fetch : (await import('node-fetch')).default;
@@ -109,9 +117,61 @@ app.post('/api/chat', async (req, res) => {
       return res.status(response.status).json({ error: 'Upstream error', details: text });
     }
 
-    const data = await response.json();
-    const content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    return res.json({ content: content || '' });
+    if (wantsStream && response.body) {
+      // Set up Server-Sent Events
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+      });
+
+      let fullContent = '';
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') {
+                res.write('data: [DONE]\n\n');
+                res.end();
+                return;
+              }
+              
+              try {
+                const parsed = JSON.parse(data);
+                const delta = parsed.choices?.[0]?.delta?.content;
+                if (delta) {
+                  fullContent += delta;
+                  res.write(`data: ${JSON.stringify({ content: delta, fullContent })}\n\n`);
+                }
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Streaming error:', error);
+        res.write(`data: ${JSON.stringify({ error: 'Stream error' })}\n\n`);
+      }
+      
+      res.end();
+    } else {
+      // Non-streaming response (fallback)
+      const data = await response.json();
+      const content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      return res.json({ content: content || '' });
+    }
   } catch (err) {
     console.error('Chat proxy error:', err);
     return res.status(500).json({ error: 'Internal server error' });

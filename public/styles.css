@@ -495,6 +495,17 @@ img, svg {
   min-width: 0;
 }
 
+/* Responsive Navigation */
+@media (max-width: 768px) {
+  .site-nav ul li:nth-child(2), /* Services */
+  .site-nav ul li:nth-child(3), /* Founder */
+  .site-nav ul li:nth-child(4), /* Mission */
+  .site-nav ul li:nth-child(7)  /* Contact */
+  {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html:focus-within {
     scroll-behavior: auto;

@@ -31,6 +31,10 @@
       .subtitle { color: var(--color-text-soft); }
       .disclaimer { font-size: 14px; color: var(--color-text-soft); margin-top: 12px; }
       .link-home { text-decoration: none; color: var(--color-primary); font-weight: 700; }
+      .typing-cursor { animation: blink 1s infinite; }
+      @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+      .streaming-text { position: relative; }
+      .streaming-text::after { content: '|'; color: var(--color-primary); animation: blink 1s infinite; }
     </style>
   </head>
   <body>
@@ -42,10 +46,10 @@
         </a>
         <nav class="site-nav" aria-label="Primary">
           <ul>
-            <li><a href="/index.html#approach">Approach</a></li>
-            <li><a href="/index.html#services">Services</a></li>
-            <li><a href="/index.html#mindfulness">Mindfulness</a></li>
-            <li><a class="cta" href="/index.html#contact">Contact</a></li>
+            <li><a href="/#approach">Approach</a></li>
+            <li><a href="/#services">Services</a></li>
+            <li><a href="/#mindfulness">Mindfulness</a></li>
+            <li><a class="cta" href="/#contact">Contact</a></li>
             <li><span id="visit-counter" aria-live="polite">Visitors: —</span></li>
           </ul>
         </nav>
@@ -77,7 +81,8 @@
         var sendBtn = document.getElementById('send');
         var messages = [];
 
-        function append(role, text) {
+        function append(role, text, options) {
+          options = options || {};
           var item = document.createElement('div');
           item.className = 'msg ' + role;
           var avatar = document.createElement('div');
@@ -90,18 +95,22 @@
           if (role === 'user') {
             bubble.textContent = text;
           } else {
-            try {
-              // Configure marked for security
-              marked.use({
-                gfm: true,
-                breaks: true,
-                headerIds: false,
-                mangle: false
-              });
-              bubble.innerHTML = marked.parse(text || '');
-            } catch (e) {
-              // Fallback to plain text if markdown parsing fails
-              bubble.textContent = text;
+            if (options.streaming) {
+              bubble.textContent = text || '';
+            } else {
+              try {
+                // Configure marked for security
+                marked.use({
+                  gfm: true,
+                  breaks: true,
+                  headerIds: false,
+                  mangle: false
+                });
+                bubble.innerHTML = marked.parse(text || '');
+              } catch (e) {
+                // Fallback to plain text if markdown parsing fails
+                bubble.textContent = text;
+              }
             }
           }
           
@@ -109,15 +118,187 @@
           item.appendChild(bubble);
           log.appendChild(item);
           log.scrollTop = log.scrollHeight;
+          
+          return bubble; // Return the bubble for streaming updates
         }
 
-        function send() {
+        function animateText(element, fullText, onComplete) {
+          var currentText = '';
+          var index = 0;
+          var speed = 20; // milliseconds per character (fast animation)
+          
+          // Add streaming cursor effect
+          element.classList.add('streaming-text');
+          
+          function addChar() {
+            if (index < fullText.length) {
+              currentText += fullText[index];
+              element.textContent = currentText;
+              index++;
+              setTimeout(addChar, speed);
+              
+              // Auto-scroll as text appears
+              log.scrollTop = log.scrollHeight;
+            } else {
+              // Animation complete, remove cursor and render markdown
+              element.classList.remove('streaming-text');
+              if (onComplete) onComplete();
+            }
+          }
+          
+          addChar();
+        }
+
+        function finalizeMessage(bubble, fullText) {
+          // Remove streaming cursor
+          bubble.classList.remove('streaming-text');
+          
+          try {
+            marked.use({
+              gfm: true,
+              breaks: true,
+              headerIds: false,
+              mangle: false
+            });
+            bubble.innerHTML = marked.parse(fullText || '');
+          } catch (e) {
+            bubble.textContent = fullText;
+          }
+          log.scrollTop = log.scrollHeight;
+        }
+
+        function sendStreaming() {
           var text = (composer.value || '').trim();
           if (!text) return;
           append('user', text);
           messages.push({ role: 'user', content: text });
           composer.value = '';
           sendBtn.disabled = true;
+
+          // Create a bubble for the assistant response
+          var bubble = append('assistant', '', { streaming: true });
+          var fullResponse = '';
+          var currentDisplayText = '';
+
+          // Use fetch with streaming
+          fetch('/api/chat', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Accept': 'text/event-stream'
+            },
+            body: JSON.stringify({ messages: messages, stream: true })
+          }).then(function(response) {
+            if (!response.ok) {
+              throw new Error('HTTP ' + response.status);
+            }
+
+            var reader = response.body.getReader();
+            var decoder = new TextDecoder();
+
+            function readStream() {
+              return reader.read().then(function(result) {
+                if (result.done) {
+                  // Stream finished, finalize message
+                  if (fullResponse) {
+                    finalizeMessage(bubble, fullResponse);
+                    messages.push({ role: 'assistant', content: fullResponse });
+                  }
+                  sendBtn.disabled = false;
+                  return;
+                }
+
+                var chunk = decoder.decode(result.value, { stream: true });
+                var lines = chunk.split('\n');
+                
+                for (var i = 0; i < lines.length; i++) {
+                  var line = lines[i].trim();
+                  if (line.startsWith('data: ')) {
+                    var data = line.slice(6);
+                    if (data === '[DONE]') {
+                      // Stream complete
+                      if (fullResponse) {
+                        finalizeMessage(bubble, fullResponse);
+                        messages.push({ role: 'assistant', content: fullResponse });
+                      }
+                      sendBtn.disabled = false;
+                      return;
+                    }
+                    
+                    try {
+                      var parsed = JSON.parse(data);
+                      if (parsed.error) {
+                        throw new Error(parsed.error);
+                      }
+                      if (parsed.content) {
+                        fullResponse += parsed.content;
+                        // Animate the new content
+                        animateNewContent(bubble, fullResponse, currentDisplayText);
+                        currentDisplayText = fullResponse;
+                      }
+                    } catch (e) {
+                      // Skip invalid JSON
+                    }
+                  }
+                }
+
+                return readStream();
+              });
+            }
+
+            return readStream();
+          }).catch(function(error) {
+            console.error('Streaming error:', error);
+            bubble.textContent = 'Network error. Please try again.';
+            sendBtn.disabled = false;
+          });
+        }
+
+        function animateNewContent(bubble, fullText, currentText) {
+          var newContent = fullText.slice(currentText.length);
+          if (!newContent) return;
+
+          var displayText = currentText;
+          var index = 0;
+          var speed = 15; // Fast animation speed
+          
+          // Add streaming cursor effect
+          bubble.classList.add('streaming-text');
+
+          function addChar() {
+            if (index < newContent.length) {
+              displayText += newContent[index];
+              bubble.textContent = displayText;
+              index++;
+              setTimeout(addChar, speed);
+              
+              // Auto-scroll as text appears
+              log.scrollTop = log.scrollHeight;
+            } else {
+              // Keep cursor for streaming (will be removed when stream ends)
+            }
+          }
+          
+          addChar();
+        }
+
+        function send() {
+          // Try streaming first, fallback to regular if needed
+          try {
+            sendStreaming();
+          } catch (error) {
+            sendFallback();
+          }
+        }
+
+        function sendFallback() {
+          var text = (composer.value || '').trim();
+          if (!text) return;
+          append('user', text);
+          messages.push({ role: 'user', content: text });
+          composer.value = '';
+          sendBtn.disabled = true;
+          
           fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -141,8 +322,13 @@
               }
               var data = payload.data || {};
               var reply = data.content || 'Sorry, something went wrong.';
-              append('assistant', reply);
-              messages.push({ role: 'assistant', content: reply });
+              
+              // Animate the response
+              var bubble = append('assistant', '', { streaming: true });
+              animateText(bubble, reply, function() {
+                finalizeMessage(bubble, reply);
+                messages.push({ role: 'assistant', content: reply });
+              });
             })
             .catch(function(){ append('assistant', 'Network error. Please try again.'); })
             .finally(function(){ sendBtn.disabled = false; });
@@ -156,8 +342,12 @@
           }
         });
 
-        // Warm greeting
-        append('assistant', 'Hi, I’m your Anxiety Remedy Hub assistant. How can I help today? I can suggest evidence-based techniques and simple routines. For personalized guidance, feel free to get in touch with our experts at Anxiety Remedy Hub via the Contact section or email sagarwalajmer@gmail.com.');
+        // Warm greeting with animation
+        var greetingText = 'Hi, I\'m your Anxiety Remedy Hub assistant. How can I help today? I can suggest evidence-based techniques and simple routines. For personalized guidance, feel free to get in touch with our experts at Anxiety Remedy Hub via the Contact section or email sagarwalajmer@gmail.com.';
+        var bubble = append('assistant', '', { streaming: true });
+        animateText(bubble, greetingText, function() {
+          finalizeMessage(bubble, greetingText);
+        });
 
         // Visits: increment once per day per device
         (function visitCounter(){
