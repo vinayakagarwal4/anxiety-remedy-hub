@@ -33,8 +33,17 @@
       .link-home { text-decoration: none; color: var(--color-primary); font-weight: 700; }
       .typing-cursor { animation: blink 1s infinite; }
       @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
-      .streaming-text { position: relative; }
-      .streaming-text::after { content: '|'; color: var(--color-primary); animation: blink 1s infinite; }
+      .streaming-text { 
+        position: relative; 
+        display: inline-block;
+      }
+      .streaming-text::after { 
+        content: '|'; 
+        color: var(--color-primary); 
+        animation: blink 1s infinite; 
+        position: absolute;
+        margin-left: 2px;
+      }
     </style>
   </head>
   <body>
@@ -133,14 +142,28 @@
           function addChar() {
             if (index < fullText.length) {
               currentText += fullText[index];
-              element.textContent = currentText;
+              
+              // Render markdown incrementally as we type
+              try {
+                marked.use({
+                  gfm: true,
+                  breaks: true,
+                  headerIds: false,
+                  mangle: false
+                });
+                var parsedHtml = marked.parse(currentText || '');
+                element.innerHTML = parsedHtml;
+              } catch (e) {
+                element.textContent = currentText;
+              }
+              
               index++;
               setTimeout(addChar, speed);
               
               // Auto-scroll as text appears
               log.scrollTop = log.scrollHeight;
             } else {
-              // Animation complete, remove cursor and render markdown
+              // Animation complete, remove cursor
               element.classList.remove('streaming-text');
               if (onComplete) onComplete();
             }
@@ -153,24 +176,19 @@
           // Remove streaming cursor
           bubble.classList.remove('streaming-text');
           
-          // Small delay to ensure streaming animation is complete
-          setTimeout(function() {
-            try {
-              // Configure marked for security and proper parsing
-              marked.use({
-                gfm: true,
-                breaks: true,
-                headerIds: false,
-                mangle: false
-              });
-              // Parse markdown and update innerHTML
-              bubble.innerHTML = marked.parse(fullText || '');
-            } catch (e) {
-              // Fallback to plain text if markdown parsing fails
-              bubble.textContent = fullText || '';
-            }
-            log.scrollTop = log.scrollHeight;
-          }, 50); // Small delay to ensure smooth transition
+          // Final markdown render (should already be rendered from streaming)
+          try {
+            marked.use({
+              gfm: true,
+              breaks: true,
+              headerIds: false,
+              mangle: false
+            });
+            bubble.innerHTML = marked.parse(fullText || '');
+          } catch (e) {
+            bubble.textContent = fullText || '';
+          }
+          log.scrollTop = log.scrollHeight;
         }
 
         function sendStreaming() {
@@ -240,8 +258,8 @@
                       }
                       if (parsed.content) {
                         fullResponse += parsed.content;
-                        // Animate the new content
-                        animateNewContent(bubble, fullResponse, currentDisplayText);
+                        // Render markdown incrementally as text comes in
+                        renderStreamingMarkdown(bubble, fullResponse);
                         currentDisplayText = fullResponse;
                       }
                     } catch (e) {
@@ -263,32 +281,30 @@
           });
         }
 
-        function animateNewContent(bubble, fullText, currentText) {
-          var newContent = fullText.slice(currentText.length);
-          if (!newContent) return;
-
-          var displayText = currentText;
-          var index = 0;
-          var speed = 8; // Very fast animation speed
-          
+        function renderStreamingMarkdown(bubble, fullText) {
           // Add streaming cursor effect
           bubble.classList.add('streaming-text');
-
-          function addChar() {
-            if (index < newContent.length) {
-              displayText += newContent[index];
-              bubble.textContent = displayText;
-              index++;
-              setTimeout(addChar, speed);
-              
-              // Auto-scroll as text appears
-              log.scrollTop = log.scrollHeight;
-            } else {
-              // Keep cursor for streaming (will be removed when stream ends)
-            }
-          }
           
-          addChar();
+          try {
+            // Configure marked for real-time rendering
+            marked.use({
+              gfm: true,
+              breaks: true,
+              headerIds: false,
+              mangle: false
+            });
+            
+            // Parse and render the current full text as markdown
+            var parsedHtml = marked.parse(fullText || '');
+            bubble.innerHTML = parsedHtml;
+            
+            // Auto-scroll as text appears
+            log.scrollTop = log.scrollHeight;
+          } catch (e) {
+            // Fallback to plain text if markdown parsing fails
+            bubble.textContent = fullText || '';
+            log.scrollTop = log.scrollHeight;
+          }
         }
 
         function send() {
